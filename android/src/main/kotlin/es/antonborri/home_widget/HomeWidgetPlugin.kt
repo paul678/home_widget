@@ -3,7 +3,12 @@ package es.antonborri.home_widget
 import android.app.Activity
 import android.appwidget.AppWidgetManager
 import android.content.*
-import androidx.annotation.NonNull
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
+import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetManager
+import androidx.glance.appwidget.state.updateAppWidgetState
+import androidx.glance.appwidget.updateAll
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -13,11 +18,14 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.plugin.common.PluginRegistry
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 
 /** HomeWidgetPlugin */
 class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
-        EventChannel.StreamHandler, PluginRegistry.NewIntentListener {
+    EventChannel.StreamHandler, PluginRegistry.NewIntentListener {
     private lateinit var channel: MethodChannel
     private lateinit var eventChannel: EventChannel
     private lateinit var context: Context
@@ -25,7 +33,7 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     private var activity: Activity? = null
     private var receiver: BroadcastReceiver? = null
 
-    override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
+    override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "home_widget")
         channel.setMethodCallHandler(this)
 
@@ -34,30 +42,105 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         context = flutterPluginBinding.applicationContext
     }
 
-    override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
+    private fun clearGlancePreferences(glanceWidgetName: String, result: Result) {
+        val scope = CoroutineScope(Dispatchers.Default)
+        scope.launch {
+            try {
+                @Suppress("UNCHECKED_CAST") val clazz = Class.forName(glanceWidgetName) as Class<GlanceAppWidget>
+                val glanceAppWidgetManager = GlanceAppWidgetManager(context)
+                for (glanceId in glanceAppWidgetManager.getGlanceIds(clazz)) {
+                    updateAppWidgetState(context, glanceId) { prefs ->
+                        prefs.clear()
+                    }
+                }
+            } catch (classException: ClassNotFoundException) {
+                result.error(
+                    "-3",
+                    "No GlanceAppWidget found with Name $glanceWidgetName. Argument 'glanceWidgetName' must be the same as your GlanceAppWidget you wish to update",
+                    classException
+                )
+            }
+        }
+    }
+
+    private fun updateGlancePreferences(id: String, data: Any?, glanceWidgetName: String, result: Result) {
+        val scope = CoroutineScope(Dispatchers.Default)
+        scope.launch {
+            try {
+                @Suppress("UNCHECKED_CAST") val clazz = Class.forName(glanceWidgetName) as Class<GlanceAppWidget>
+                val glanceAppWidgetManager = GlanceAppWidgetManager(context)
+                for (glanceId in glanceAppWidgetManager.getGlanceIds(clazz)) {
+                    updateAppWidgetState(context, glanceId) { prefs ->
+                        if (data != null) {
+                            when (data) {
+                                is String -> prefs[stringPreferencesKey(id)] = data
+                                else -> result.error(
+                                    "-10",
+                                    "Unsupported Glance Key Type ${data::class.java.simpleName}. We only support type String",
+                                    IllegalArgumentException()
+                                )
+                            }
+                        } else {
+                            prefs.remove(stringSetPreferencesKey(id))
+                        }
+                    }
+                }
+            } catch (classException: ClassNotFoundException) {
+                result.error(
+                    "-3",
+                    "No GlanceAppWidget found with Name $glanceWidgetName. Argument 'glanceWidgetName' must be the same as your GlanceAppWidget you wish to update",
+                    classException
+                )
+            }
+        }
+    }
+
+    override fun onMethodCall(call: MethodCall, result: Result) {
         when (call.method) {
+            "clearWidgetData" -> {
+                val glanceWidgetName = call.argument<String>("glanceWidgetName")
+                if (glanceWidgetName != null) {
+                    clearGlancePreferences(glanceWidgetName, result)
+                }
+                val prefs = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
+                prefs.clear()
+                result.success(prefs.commit())
+            }
+
             "saveWidgetData" -> {
                 if (call.hasArgument("id") && call.hasArgument("data")) {
                     val id = call.argument<String>("id")
                     val data = call.argument<Any>("data")
+                    val glanceWidgetName = call.argument<String>("glanceWidgetName")
+
+                    if (id != null && glanceWidgetName != null) {
+                        updateGlancePreferences(id, data, glanceWidgetName, result)
+                    }
+
                     val prefs = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
-                    if(data != null) {
+                    if (data != null) {
                         when (data) {
                             is Boolean -> prefs.putBoolean(id, data)
                             is Float -> prefs.putFloat(id, data)
                             is String -> prefs.putString(id, data)
                             is Double -> prefs.putLong(id, java.lang.Double.doubleToRawLongBits(data))
                             is Int -> prefs.putInt(id, data)
-                            else -> result.error("-10", "Invalid Type ${data!!::class.java.simpleName}. Supported types are Boolean, Float, String, Double, Long", IllegalArgumentException())
+                            else -> result.error(
+                                "-10",
+                                "Invalid Type ${data::class.java.simpleName}. Supported types are Boolean, Float, String, Double, Long",
+                                IllegalArgumentException()
+                            )
                         }
                     } else {
-                        prefs.remove(id);
+                        prefs.remove(id)
                     }
                     result.success(prefs.commit())
                 } else {
                     result.error("-1", "InvalidArguments saveWidgetData must be called with id and data", IllegalArgumentException())
                 }
+
             }
+
             "getWidgetData" -> {
                 if (call.hasArgument("id")) {
                     val id = call.argument<String>("id")
@@ -67,7 +150,7 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
 
                     val value = prefs.all[id] ?: defaultValue
 
-                    if(value is Long) {
+                    if (value is Long) {
                         result.success(java.lang.Double.longBitsToDouble(value))
                     } else {
                         result.success(value)
@@ -76,6 +159,7 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                     result.error("-2", "InvalidArguments getWidgetData must be called with id", IllegalArgumentException())
                 }
             }
+
             "updateWidget" -> {
                 val qualifiedName = call.argument<String>("qualifiedAndroidName")
                 val className = call.argument<String>("android") ?: call.argument<String>("name")
@@ -86,14 +170,31 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                     val ids: IntArray = AppWidgetManager.getInstance(context.applicationContext).getAppWidgetIds(ComponentName(context, javaClass))
                     intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
                     context.sendBroadcast(intent)
+
+                    val glanceWidgetName = call.argument<String>("glanceWidgetName")
+                    if (glanceWidgetName != null) {
+                        val scope = CoroutineScope(Dispatchers.Default)
+                        scope.launch {
+                            val clazz = Class.forName(glanceWidgetName).kotlin
+                            val glanceAppWidget: GlanceAppWidget = clazz.objectInstance as GlanceAppWidget
+                            glanceAppWidget.updateAll(context)
+                        }
+                    }
+
                     result.success(true)
                 } catch (classException: ClassNotFoundException) {
-                    result.error("-3", "No Widget found with Name $className. Argument 'name' must be the same as your AppWidgetProvider you wish to update", classException)
+                    result.error(
+                        "-3",
+                        "No Widget found with Name $className. Argument 'name' must be the same as your AppWidgetProvider you wish to update",
+                        classException
+                    )
                 }
             }
+
             "setAppGroupId" -> {
                 result.success(true)
             }
+
             "initiallyLaunchedFromHomeWidget" -> {
                 return if (activity?.intent?.action?.equals(HomeWidgetLaunchIntent.HOME_WIDGET_LAUNCH_ACTION) == true) {
                     result.success(activity?.intent?.data?.toString() ?: "")
@@ -101,19 +202,21 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                     result.success(null)
                 }
             }
+
             "registerBackgroundCallback" -> {
                 val dispatcher = ((call.arguments as Iterable<*>).toList()[0] as Number).toLong()
                 val callback = ((call.arguments as Iterable<*>).toList()[1] as Number).toLong()
                 saveCallbackHandle(context, dispatcher, callback)
                 return result.success(true)
             }
+
             else -> {
                 result.notImplemented()
             }
         }
     }
 
-    override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
+    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
     }
 
@@ -126,17 +229,17 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
 
         private fun saveCallbackHandle(context: Context, dispatcher: Long, handle: Long) {
             context.getSharedPreferences(INTERNAL_PREFERENCES, Context.MODE_PRIVATE)
-                    .edit()
-                    .putLong(CALLBACK_DISPATCHER_HANDLE, dispatcher)
-                    .putLong(CALLBACK_HANDLE, handle)
-                    .apply()
+                .edit()
+                .putLong(CALLBACK_DISPATCHER_HANDLE, dispatcher)
+                .putLong(CALLBACK_HANDLE, handle)
+                .apply()
         }
 
         fun getDispatcherHandle(context: Context): Long =
-                context.getSharedPreferences(INTERNAL_PREFERENCES, Context.MODE_PRIVATE).getLong(CALLBACK_DISPATCHER_HANDLE, 0)
+            context.getSharedPreferences(INTERNAL_PREFERENCES, Context.MODE_PRIVATE).getLong(CALLBACK_DISPATCHER_HANDLE, 0)
 
         fun getHandle(context: Context): Long =
-                context.getSharedPreferences(INTERNAL_PREFERENCES, Context.MODE_PRIVATE).getLong(CALLBACK_HANDLE, 0)
+            context.getSharedPreferences(INTERNAL_PREFERENCES, Context.MODE_PRIVATE).getLong(CALLBACK_HANDLE, 0)
 
         fun getData(context: Context): SharedPreferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
     }

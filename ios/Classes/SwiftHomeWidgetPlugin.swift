@@ -9,7 +9,7 @@ public class SwiftHomeWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandle
     private var initialUrl : URL?
     private var latestUrl : URL? {
         didSet {
-            if(latestUrl != nil) {
+            if(latestUrl != nil)  {
                 eventSink?.self(latestUrl?.absoluteString)
             }
         }
@@ -18,7 +18,7 @@ public class SwiftHomeWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandle
     private var eventSink : FlutterEventSink?
     
     private let notInitializedError = FlutterError(
-    code: "-7", message: "AppGroupId not set. Call setAppGroupId first", details: nil)
+        code: "-7", message: "AppGroupId not set. Call setAppGroupId first", details: nil)
     
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = SwiftHomeWidgetPlugin()
@@ -43,6 +43,15 @@ public class SwiftHomeWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandle
                 result(true)
             } else {
                 result(FlutterError(code: "-6", message: "InvalidArguments setAppGroupId must be called with a group id", details: nil))
+            }
+        }else if call.method == "clearWidgetData" {
+            if (SwiftHomeWidgetPlugin.groupId == nil) {
+                result(notInitializedError)
+                return
+            }
+            if let preferences = UserDefaults.init(suiteName: SwiftHomeWidgetPlugin.groupId) {
+                preferences.removePersistentDomain(forName: SwiftHomeWidgetPlugin.groupId!)
+                preferences.synchronize()
             }
         }else if call.method == "saveWidgetData" {
             if (SwiftHomeWidgetPlugin.groupId == nil) {
@@ -82,7 +91,7 @@ public class SwiftHomeWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandle
                 result(FlutterError(code: "-2", message: "InvalidArguments getWidgetData must be called with id", details: nil))
             }
         } else if call.method == "updateWidget" {
-
+            
             guard let args = call.arguments else {
                 return
             }
@@ -121,7 +130,7 @@ public class SwiftHomeWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandle
         eventSink = nil
         return nil
     }
-
+    
     
     public func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [AnyHashable : Any] = [:]) -> Bool {
         let launchUrl = (launchOptions[UIApplication.LaunchOptionsKey.url] as? NSURL)?.absoluteURL
@@ -143,6 +152,6 @@ public class SwiftHomeWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandle
     private func isWidgetUrl(url: URL) -> Bool {
         let components = URLComponents.init(url: url, resolvingAgainstBaseURL: false)
         return components?.queryItems?.contains(where: {(item) in item.name == "homeWidget"}) ?? false
-    
+        
     }
 }

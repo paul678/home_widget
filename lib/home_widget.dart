@@ -10,13 +10,27 @@ class HomeWidget {
   static const MethodChannel _channel = MethodChannel('home_widget');
   static const EventChannel _eventChannel = EventChannel('home_widget/updates');
 
+  /// Clears all stored data of the Widget Storage
+  ///
+  /// Returns whether the data was cleared or not
+  static Future<bool?> clearWidgetData({String? glanceWidgetName}) {
+    return _channel.invokeMethod<bool>('clearWidgetData', {
+      'glanceWidgetName': glanceWidgetName,
+    });
+  }
+
   /// Save [data] to the Widget Storage
   ///
   /// Returns whether the data was saved or not
-  static Future<bool?> saveWidgetData<T>(String id, T? data) {
+  static Future<bool?> saveWidgetData<T>(
+    String id,
+    T? data, {
+    String? glanceWidgetName,
+  }) {
     return _channel.invokeMethod<bool>('saveWidgetData', {
       'id': id,
       'data': data,
+      'glanceWidgetName': glanceWidgetName,
     });
   }
 
@@ -31,14 +45,16 @@ class HomeWidget {
   static Future<bool?> updateWidget({
     String? name,
     String? androidName,
-    String? iOSName,
+    String? glanceWidgetName,
     String? qualifiedAndroidName,
+    String? iOSName,
   }) {
     return _channel.invokeMethod('updateWidget', {
       'name': name,
       'android': androidName,
-      'ios': iOSName,
+      'glanceWidgetName': glanceWidgetName,
       'qualifiedAndroidName': qualifiedAndroidName,
+      'ios': iOSName,
     });
   }
 
