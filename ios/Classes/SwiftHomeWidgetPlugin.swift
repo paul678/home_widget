@@ -49,10 +49,9 @@ public class SwiftHomeWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandle
                 result(notInitializedError)
                 return
             }
-            if let preferences = UserDefaults.init(suiteName: SwiftHomeWidgetPlugin.groupId) {
-                preferences.removePersistentDomain(forName: SwiftHomeWidgetPlugin.groupId!)
-                preferences.synchronize()
-            }
+            
+            UserDefaults.standard.removePersistentDomain(forName: SwiftHomeWidgetPlugin.groupId!)
+            result(true)
         }else if call.method == "saveWidgetData" {
             if (SwiftHomeWidgetPlugin.groupId == nil) {
                 result(notInitializedError)
