@@ -3,6 +3,8 @@ package es.antonborri.home_widget
 import android.app.Activity
 import android.appwidget.AppWidgetManager
 import android.content.*
+import android.os.Build
+import androidx.annotation.NonNull
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.glance.appwidget.GlanceAppWidget
@@ -33,7 +35,7 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     private var activity: Activity? = null
     private var receiver: BroadcastReceiver? = null
 
-    override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
+    override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "home_widget")
         channel.setMethodCallHandler(this)
 
@@ -95,7 +97,7 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         }
     }
 
-    override fun onMethodCall(call: MethodCall, result: Result) {
+    override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
         when (call.method) {
             "clearWidgetData" -> {
                 val glanceWidgetName = call.argument<String>("glanceWidgetName")
@@ -209,7 +211,37 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                 saveCallbackHandle(context, dispatcher, callback)
                 return result.success(true)
             }
+            "isRequestPinWidgetSupported" -> {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                    return result.success(false)
+                }
 
+                val appWidgetManager = AppWidgetManager.getInstance(context.applicationContext)
+                return result.success(appWidgetManager.isRequestPinAppWidgetSupported)
+            }
+            "requestPinWidget" -> {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                    return result.success(null)
+                }
+
+                val qualifiedName = call.argument<String>("qualifiedAndroidName")
+                val className = call.argument<String>("android") ?: call.argument<String>("name")
+
+                try {
+                    val javaClass = Class.forName(qualifiedName ?: "${context.packageName}.${className}")
+                    val myProvider = ComponentName(context, javaClass)
+
+                    val appWidgetManager = AppWidgetManager.getInstance(context.applicationContext)
+
+                    if (appWidgetManager.isRequestPinAppWidgetSupported) {
+                        appWidgetManager.requestPinAppWidget(myProvider, null, null)
+                    }
+
+                    return result.success(null)
+                } catch (classException: ClassNotFoundException) {
+                    result.error("-4", "No Widget found with Name $className. Argument 'name' must be the same as your AppWidgetProvider you wish to update", classException)
+                }
+            }
             else -> {
                 result.notImplemented()
             }
