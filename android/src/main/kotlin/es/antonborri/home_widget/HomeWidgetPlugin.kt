@@ -2,9 +2,12 @@ package es.antonborri.home_widget
 
 import android.app.Activity
 import android.appwidget.AppWidgetManager
-import android.content.*
+import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
-import androidx.annotation.NonNull
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.glance.appwidget.GlanceAppWidget
@@ -35,7 +38,7 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     private var activity: Activity? = null
     private var receiver: BroadcastReceiver? = null
 
-    override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
+    override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "home_widget")
         channel.setMethodCallHandler(this)
 
@@ -97,7 +100,7 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         }
     }
 
-    override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
+    override fun onMethodCall(call: MethodCall, result: Result) {
         when (call.method) {
             "clearWidgetData" -> {
                 val glanceWidgetName = call.argument<String>("glanceWidgetName")
@@ -211,6 +214,7 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                 saveCallbackHandle(context, dispatcher, callback)
                 return result.success(true)
             }
+
             "isRequestPinWidgetSupported" -> {
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
                     return result.success(false)
@@ -219,6 +223,7 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                 val appWidgetManager = AppWidgetManager.getInstance(context.applicationContext)
                 return result.success(appWidgetManager.isRequestPinAppWidgetSupported)
             }
+
             "requestPinWidget" -> {
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
                     return result.success(null)
@@ -239,9 +244,14 @@ class HomeWidgetPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
 
                     return result.success(null)
                 } catch (classException: ClassNotFoundException) {
-                    result.error("-4", "No Widget found with Name $className. Argument 'name' must be the same as your AppWidgetProvider you wish to update", classException)
+                    result.error(
+                        "-4",
+                        "No Widget found with Name $className. Argument 'name' must be the same as your AppWidgetProvider you wish to update",
+                        classException
+                    )
                 }
             }
+
             else -> {
                 result.notImplemented()
             }
